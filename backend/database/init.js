@@ -167,10 +167,59 @@ async function initDatabase() {
       console.log('数据库迁移: 已重建表 vaccine_reminders（兼容旧版结构）');
     }
 
+    await run(`
+      CREATE TABLE IF NOT EXISTS pickup_areas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        description TEXT,
+        base_price DECIMAL(10,2) NOT NULL DEFAULT 0,
+        sort_order INTEGER DEFAULT 0,
+        status TEXT NOT NULL DEFAULT '启用' CHECK(status IN ('启用', '停用'))
+      )
+    `);
+
+    await run(`
+      CREATE TABLE IF NOT EXISTS pickup_price_tiers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        min_distance DECIMAL(10,2) NOT NULL DEFAULT 0,
+        max_distance DECIMAL(10,2) NOT NULL,
+        price DECIMAL(10,2) NOT NULL,
+        description TEXT,
+        sort_order INTEGER DEFAULT 0
+      )
+    `);
+
+    await run(`
+      CREATE TABLE IF NOT EXISTS pickup_bookings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        pet_id INTEGER,
+        owner_name TEXT NOT NULL,
+        owner_phone TEXT NOT NULL,
+        pickup_address TEXT NOT NULL,
+        pickup_area TEXT NOT NULL,
+        pickup_date DATE NOT NULL,
+        pickup_time TEXT NOT NULL,
+        dropoff_address TEXT,
+        distance_km DECIMAL(10,2),
+        pickup_fee DECIMAL(10,2) NOT NULL DEFAULT 0,
+        service_type TEXT NOT NULL DEFAULT '上门接送' CHECK(service_type IN ('上门接送', '寄养接送', '美容接送')),
+        related_booking_id INTEGER,
+        status TEXT NOT NULL DEFAULT '待接送' CHECK(status IN ('待接送', '已接走', '已送回', '已完成', '已取消')),
+        driver_name TEXT,
+        driver_phone TEXT,
+        remarks TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (pet_id) REFERENCES pets(id)
+      )
+    `);
+
     await run('CREATE INDEX IF NOT EXISTS idx_boarding_cage_date ON boarding_bookings(cage_id, check_in_date, check_out_date)');
     await run('CREATE INDEX IF NOT EXISTS idx_grooming_groomer_datetime ON grooming_bookings(groomer_id, appointment_date, appointment_time)');
     await run('CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(created_at)');
     await run('CREATE INDEX IF NOT EXISTS idx_vaccine_reminders_pet ON vaccine_reminders(pet_id, reminder_type, sent_at)');
+    await run('CREATE INDEX IF NOT EXISTS idx_pickup_date_area ON pickup_bookings(pickup_date, pickup_area)');
+    await run('CREATE INDEX IF NOT EXISTS idx_pickup_status ON pickup_bookings(status)');
 
     const cageCount = await get('SELECT COUNT(*) as count FROM cages');
     if (cageCount.count === 0) {
@@ -201,6 +250,37 @@ async function initDatabase() {
         await run(`INSERT INTO groomers (name, phone, status) VALUES (?, ?, '在职')`, g);
       }
       console.log('初始化美容师数据完成');
+    }
+
+    const areaCount = await get('SELECT COUNT(*) as count FROM pickup_areas');
+    if (areaCount.count === 0) {
+      const areas = [
+        ['东城区', '市中心东部区域', 20, 1],
+        ['西城区', '市中心西部区域', 20, 2],
+        ['南城区', '市中心南部区域', 30, 3],
+        ['北城区', '市中心北部区域', 30, 4],
+        ['开发区', '经济技术开发区', 50, 5],
+        ['高新区', '高新技术产业园区', 50, 6],
+      ];
+      for (const a of areas) {
+        await run(`INSERT INTO pickup_areas (name, description, base_price, sort_order, status) VALUES (?, ?, ?, ?, '启用')`, a);
+      }
+      console.log('初始化接送区域数据完成');
+    }
+
+    const priceTierCount = await get('SELECT COUNT(*) as count FROM pickup_price_tiers');
+    if (priceTierCount.count === 0) {
+      const priceTiers = [
+        [0, 5, 30, '5公里内', 1],
+        [5, 10, 50, '5-10公里', 2],
+        [10, 20, 80, '10-20公里', 3],
+        [20, 30, 120, '20-30公里', 4],
+        [30, 50, 180, '30-50公里', 5],
+      ];
+      for (const pt of priceTiers) {
+        await run(`INSERT INTO pickup_price_tiers (min_distance, max_distance, price, description, sort_order) VALUES (?, ?, ?, ?, ?)`, pt);
+      }
+      console.log('初始化价格区间数据完成');
     }
 
     console.log('数据库初始化完成');

@@ -63,4 +63,24 @@ export const vaccineApi = {
   reminders: (pet_id) => api.get('/vaccine/reminders', { params: { pet_id } })
 };
 
+export const pickupApi = {
+  list: (params) => api.get('/pickup', { params }),
+  get: (id) => api.get(`/pickup/${id}`),
+  create: (data) => api.post('/pickup', data),
+  update: (id, data) => api.put(`/pickup/${id}`, data),
+  updateStatus: (id, status) => api.patch(`/pickup/${id}/status`, { status }),
+  cancel: (id) => api.delete(`/pickup/${id}`),
+  areas: (status) => api.get('/pickup/areas', { params: { status } }),
+  createArea: (data) => api.post('/pickup/areas', data),
+  updateArea: (id, data) => api.put(`/pickup/areas/${id}`, data),
+  deleteArea: (id) => api.delete(`/pickup/areas/${id}`),
+  priceTiers: () => api.get('/pickup/price-tiers'),
+  createPriceTier: (data) => api.post('/pickup/price-tiers', data),
+  updatePriceTier: (id, data) => api.put(`/pickup/price-tiers/${id}`, data),
+  deletePriceTier: (id) => api.delete(`/pickup/price-tiers/${id}`),
+  calculateFee: (distance_km, area_id, area_name) => 
+    api.post('/pickup/calculate-fee', { distance_km, area_id, area_name }),
+  routes: (date) => api.get('/pickup/routes', { params: { date } })
+};
+
 export default api;

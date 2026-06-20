@@ -8,6 +8,7 @@ const boardingRouter = require('./routes/boarding');
 const groomingRouter = require('./routes/grooming');
 const transactionsRouter = require('./routes/transactions');
 const vaccineRouter = require('./routes/vaccine');
+const pickupRouter = require('./routes/pickup');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -25,6 +26,7 @@ app.use('/api/boarding', boardingRouter);
 app.use('/api/grooming', groomingRouter);
 app.use('/api/transactions', transactionsRouter);
 app.use('/api/vaccine', vaccineRouter);
+app.use('/api/pickup', pickupRouter);
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
@@ -97,11 +99,12 @@ async function startServer() {
       console.log('========================================');
       console.log(`🚀 服务地址: http://localhost:${port}`);
       console.log('');
-      console.log('� 可用API:');
+      console.log('🚗 可用API:');
       console.log(`   GET  /api/health       - 健康检查`);
       console.log(`   GET  /api/pets         - 宠物档案列表`);
       console.log(`   GET  /api/boarding     - 寄养预约列表`);
       console.log(`   GET  /api/grooming     - 美容预约列表`);
+      console.log(`   GET  /api/pickup       - 接送预约列表`);
       console.log(`   GET  /api/transactions - 交易记录列表`);
       console.log(`   GET  /api/vaccine/alerts - 疫苗到期提醒列表`);
       console.log('========================================');

@@ -6,6 +6,7 @@ import {
   CustomerServiceOutlined,
   ShopOutlined,
   ScissorOutlined,
+  CarOutlined,
   DollarOutlined,
   HistoryOutlined
 } from '@ant-design/icons';
@@ -13,6 +14,7 @@ import Dashboard from './pages/Dashboard.jsx';
 import Pets from './pages/Pets.jsx';
 import Boarding from './pages/Boarding.jsx';
 import Grooming from './pages/Grooming.jsx';
+import Pickup from './pages/Pickup.jsx';
 import Checkout from './pages/Checkout.jsx';
 import Transactions from './pages/Transactions.jsx';
 
@@ -23,6 +25,7 @@ const menuItems = [
   { key: '/pets', icon: <CustomerServiceOutlined />, label: <Link to="/pets">宠物档案</Link> },
   { key: '/boarding', icon: <ShopOutlined />, label: <Link to="/boarding">寄养预约</Link> },
   { key: '/grooming', icon: <ScissorOutlined />, label: <Link to="/grooming">美容预约</Link> },
+  { key: '/pickup', icon: <CarOutlined />, label: <Link to="/pickup">接送服务</Link> },
   { key: '/checkout', icon: <DollarOutlined />, label: <Link to="/checkout">收银结算</Link> },
   { key: '/transactions', icon: <HistoryOutlined />, label: <Link to="/transactions">交易记录</Link> },
 ];
@@ -73,6 +76,7 @@ function App() {
             <Route path="/pets" element={<Pets />} />
             <Route path="/boarding" element={<Boarding />} />
             <Route path="/grooming" element={<Grooming />} />
+            <Route path="/pickup" element={<Pickup />} />
             <Route path="/checkout" element={<Checkout />} />
             <Route path="/transactions" element={<Transactions />} />
           </Routes>
