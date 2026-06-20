@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Table, Button, Input, Space, Modal, Form, InputNumber, 
+  Table, Button, Input, Space, Modal, Form, InputNumber, DatePicker,
   message, Popconfirm, Tag, Descriptions 
 } from 'antd';
 import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, EyeOutlined } from '@ant-design/icons';
 import { petApi } from '../services/api.js';
+import { getVaccineStatus } from '../utils/vaccine.js';
 import dayjs from 'dayjs';
 
 function Pets() {
@@ -45,7 +46,10 @@ function Pets() {
 
   const handleEdit = (pet) => {
     setEditingPet(pet);
-    form.setFieldsValue(pet);
+    form.setFieldsValue({
+      ...pet,
+      vaccine_expiry_date: pet.vaccine_expiry_date ? dayjs(pet.vaccine_expiry_date) : null
+    });
     setModalVisible(true);
   };
 
@@ -71,11 +75,17 @@ function Pets() {
 
   const handleSubmit = async (values) => {
     try {
+      const payload = {
+        ...values,
+        vaccine_expiry_date: values.vaccine_expiry_date
+          ? dayjs(values.vaccine_expiry_date).format('YYYY-MM-DD')
+          : ''
+      };
       if (editingPet) {
-        await petApi.update(editingPet.id, values);
+        await petApi.update(editingPet.id, payload);
         message.success('更新成功');
       } else {
-        await petApi.create(values);
+        await petApi.create(payload);
         message.success('创建成功');
       }
       setModalVisible(false);
@@ -91,11 +101,33 @@ function Pets() {
     { title: '品种', dataIndex: 'breed', key: 'breed', width: 150 },
     { title: '年龄', dataIndex: 'age', key: 'age', width: 80, render: a => `${a}岁` },
     { 
-      title: '疫苗记录', 
-      dataIndex: 'vaccine_records', 
-      key: 'vaccine_records',
-      ellipsis: true,
-      render: v => v ? <Tag color="green">已接种</Tag> : <Tag color="default">无记录</Tag>
+      title: '疫苗状态', 
+      key: 'vaccine',
+      width: 120,
+      render: (_, record) => {
+        if (!record.vaccine_expiry_date && !record.vaccine_records) {
+          return <Tag color="default">无记录</Tag>;
+        }
+        if (!record.vaccine_expiry_date) {
+          return <Tag color="green">已接种</Tag>;
+        }
+        const s = getVaccineStatus(record.vaccine_expiry_date);
+        return <Tag color={s.color}>{s.label}</Tag>;
+      }
+    },
+    { 
+      title: '疫苗到期', 
+      dataIndex: 'vaccine_expiry_date', 
+      key: 'vaccine_expiry_date',
+      width: 120,
+      render: d => d || '-'
+    },
+    { 
+      title: '主人电话', 
+      dataIndex: 'owner_phone', 
+      key: 'owner_phone', 
+      width: 130,
+      render: p => p || '-'
     },
     { 
       title: '习性备注', 
@@ -150,7 +182,7 @@ function Pets() {
         rowKey="id" 
         loading={loading}
         pagination={{ pageSize: 10 }}
-        scroll={{ x: 1000 }}
+        scroll={{ x: 1300 }}
       />
 
       <Modal
@@ -169,6 +201,12 @@ function Pets() {
           </Form.Item>
           <Form.Item name="age" label="年龄" rules={[{ required: true, message: '请输入年龄' }]}>
             <InputNumber min={0} max={50} style={{ width: '100%' }} placeholder="请输入年龄" />
+          </Form.Item>
+          <Form.Item name="owner_phone" label="主人电话" tooltip="用于疫苗到期短信提醒">
+            <Input placeholder="请输入主人手机号，如：13800138000" />
+          </Form.Item>
+          <Form.Item name="vaccine_expiry_date" label="疫苗到期日期" tooltip="设置后系统将在临期/过期时自动提醒">
+            <DatePicker style={{ width: '100%' }} placeholder="请选择疫苗到期日期" />
           </Form.Item>
           <Form.Item name="vaccine_records" label="疫苗记录">
             <Input.TextArea rows={3} placeholder="请输入疫苗接种记录，如：2024-01-15 接种狂犬疫苗" />
@@ -199,6 +237,18 @@ function Pets() {
             <Descriptions.Item label="宠物名称">{viewingPet.name}</Descriptions.Item>
             <Descriptions.Item label="品种">{viewingPet.breed}</Descriptions.Item>
             <Descriptions.Item label="年龄">{viewingPet.age} 岁</Descriptions.Item>
+            <Descriptions.Item label="主人电话">{viewingPet.owner_phone || '未填写'}</Descriptions.Item>
+            <Descriptions.Item label="疫苗到期日期">
+              {viewingPet.vaccine_expiry_date ? (
+                <Space>
+                  <span>{viewingPet.vaccine_expiry_date}</span>
+                  {(() => {
+                    const s = getVaccineStatus(viewingPet.vaccine_expiry_date);
+                    return <Tag color={s.color}>{s.label}</Tag>;
+                  })()}
+                </Space>
+              ) : '未设置'}
+            </Descriptions.Item>
             <Descriptions.Item label="疫苗记录">
               {viewingPet.vaccine_records || '暂无记录'}
             </Descriptions.Item>

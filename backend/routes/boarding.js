@@ -79,7 +79,8 @@ router.get('/', async (req, res) => {
   try {
     const { status, pet_id, start_date, end_date } = req.query;
     let sql = `
-      SELECT bb.*, p.name as pet_name, p.breed as pet_breed, 
+      SELECT bb.*, p.name as pet_name, p.breed as pet_breed,
+             p.vaccine_expiry_date as pet_vaccine_expiry_date, p.owner_phone as pet_owner_phone,
              c.name as cage_name, c.size as cage_size, c.price_per_day
       FROM boarding_bookings bb
       LEFT JOIN pets p ON bb.pet_id = p.id
@@ -117,7 +118,8 @@ router.get('/:id', async (req, res) => {
   try {
     const booking = await get(`
       SELECT bb.*, p.name as pet_name, p.breed as pet_breed, p.age as pet_age,
-             p.vaccine_records as pet_vaccine_records, p.habits as pet_habits,
+             p.vaccine_records as pet_vaccine_records, p.vaccine_expiry_date as pet_vaccine_expiry_date,
+             p.owner_phone as pet_owner_phone, p.habits as pet_habits,
              c.name as cage_name, c.size as cage_size, c.price_per_day
       FROM boarding_bookings bb
       LEFT JOIN pets p ON bb.pet_id = p.id

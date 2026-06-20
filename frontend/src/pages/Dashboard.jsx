@@ -1,8 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { Row, Col, Card, Table, Tag, Statistic, Space, Button } from 'antd';
+import React, { useState, useEffect, useRef } from 'react';
+import { Row, Col, Card, Table, Tag, Statistic, Space, Button, Alert, Tooltip, Badge } from 'antd';
 import { Link } from 'react-router-dom';
 import dayjs from 'dayjs';
-import { boardingApi, groomingApi, transactionApi, petApi } from '../services/api.js';
+import { boardingApi, groomingApi, transactionApi, petApi, vaccineApi } from '../services/api.js';
+import VaccineAlertModal from '../components/VaccineAlertModal.jsx';
+import { getVaccineStatus } from '../utils/vaccine.js';
+import { ExclamationCircleTwoTone, WarningTwoTone, SyncOutlined } from '@ant-design/icons';
 
 const statusColors = {
   '待入住': 'warning',
@@ -25,19 +28,96 @@ function Dashboard() {
   const [recentGrooming, setRecentGrooming] = useState([]);
   const [todayIncome, setTodayIncome] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [vaccineAlertCount, setVaccineAlertCount] = useState(0);
+  const [vaccineAlerts, setVaccineAlerts] = useState([]);
+  const [vaccineModalVisible, setVaccineModalVisible] = useState(false);
+  const [vaccineMode, setVaccineMode] = useState('pre_expire');
+  const [vaccineStats, setVaccineStats] = useState({ expired: 0, expiring: 0, inShopExpired: 0, inShopExpiring: 0 });
+  const [autoRefreshing, setAutoRefreshing] = useState(false);
+  const preExpireShownRef = useRef(false);
 
   useEffect(() => {
     loadData();
+    checkPreExpire();
+    const timer = setInterval(() => {
+      setAutoRefreshing(true);
+      Promise.all([loadVaccineAlertCount(), checkPreExpire(true)]).finally(() => {
+        setTimeout(() => setAutoRefreshing(false), 500);
+      });
+    }, 5 * 60 * 1000);
+    return () => clearInterval(timer);
   }, []);
+
+  const loadVaccineAlertCount = async () => {
+    try {
+      const list = await vaccineApi.alerts();
+      setVaccineAlertCount(list.length);
+      let expired = 0, expiring = 0;
+      for (const p of list) {
+        const s = getVaccineStatus(p.vaccine_expiry_date || p.expire_date);
+        if (s.status === 'expired') expired++;
+        else if (s.status === 'expiring') expiring++;
+      }
+      setVaccineStats(prev => ({ ...prev, expired, expiring }));
+    } catch (err) {
+      // 静默处理
+    }
+  };
+
+  const checkPreExpire = async (silent = false) => {
+    try {
+      const data = await vaccineApi.preExpire();
+      if (data.length > 0 && (!silent || preExpireShownRef.current)) {
+        setVaccineAlerts(data);
+        setVaccineMode('pre_expire');
+        setVaccineModalVisible(true);
+        preExpireShownRef.current = true;
+      } else if (data.length > 0) {
+        setVaccineAlerts(data);
+        setVaccineMode('pre_expire');
+        setVaccineModalVisible(true);
+        preExpireShownRef.current = true;
+      }
+    } catch (err) {
+      console.error('疫苗到期提醒检查失败:', err);
+    }
+    loadVaccineAlertCount();
+  };
+
+  const openAllVaccineAlerts = async () => {
+    try {
+      const data = await vaccineApi.alerts();
+      setVaccineAlerts(data);
+      setVaccineMode('all');
+      setVaccineModalVisible(true);
+    } catch (err) {
+      console.error('加载疫苗提醒失败:', err);
+    }
+  };
+
+  const refreshVaccineAlerts = async () => {
+    if (vaccineMode === 'pre_expire') {
+      const data = await vaccineApi.preExpire();
+      setVaccineAlerts(data);
+      if (data.length === 0) {
+        setVaccineModalVisible(false);
+      }
+    } else {
+      const data = await vaccineApi.alerts();
+      setVaccineAlerts(data);
+    }
+    loadVaccineAlertCount();
+  };
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const [pets, boarding, grooming, daily] = await Promise.all([
+      const [pets, boarding, grooming, daily, vaccineList] = await Promise.all([
         petApi.list(),
         boardingApi.list({ status: '已入住' }),
         groomingApi.list({ status: '待服务', start_date: dayjs().format('YYYY-MM-DD') }),
-        transactionApi.daily(dayjs().format('YYYY-MM-DD'))
+        transactionApi.daily(dayjs().format('YYYY-MM-DD')),
+        vaccineApi.alerts().catch(() => [])
       ]);
       
       setStats({
@@ -46,6 +126,22 @@ function Dashboard() {
         grooming: grooming.length,
         income: daily.summary.total_amount
       });
+
+      let allExpired = 0, allExpiring = 0, inShopExpired = 0, inShopExpiring = 0;
+      for (const p of vaccineList) {
+        const s = getVaccineStatus(p.vaccine_expiry_date || p.expire_date);
+        if (s.status === 'expired') allExpired++;
+        else if (s.status === 'expiring') allExpiring++;
+      }
+      for (const b of boarding) {
+        if (b.pet_vaccine_expiry_date) {
+          const s = getVaccineStatus(b.pet_vaccine_expiry_date);
+          if (s.status === 'expired') inShopExpired++;
+          else if (s.status === 'expiring') inShopExpiring++;
+        }
+      }
+      setVaccineStats({ expired: allExpired, expiring: allExpiring, inShopExpired, inShopExpiring });
+      setVaccineAlertCount(vaccineList.length);
       
       const [allBoarding, allGrooming] = await Promise.all([
         boardingApi.list(),
@@ -67,6 +163,17 @@ function Dashboard() {
     { title: '笼位', dataIndex: 'cage_name', key: 'cage_name' },
     { title: '入住日期', dataIndex: 'check_in_date', key: 'check_in_date' },
     { title: '离店日期', dataIndex: 'check_out_date', key: 'check_out_date' },
+    {
+      title: '疫苗',
+      key: 'vaccine',
+      render: (_, record) => {
+        if (!record.pet_vaccine_expiry_date) return <Tag color="default">未设</Tag>;
+        const s = getVaccineStatus(record.pet_vaccine_expiry_date);
+        if (s.status === 'expired') return <Tag color="red">已过期</Tag>;
+        if (s.status === 'expiring') return <Tag color="orange">临期{s.daysRemaining}天</Tag>;
+        return <Tag color="green">有效</Tag>;
+      }
+    },
     { title: '状态', dataIndex: 'status', key: 'status', render: s => <Tag color={statusColors[s]}>{s}</Tag> }
   ];
 
@@ -82,8 +189,80 @@ function Dashboard() {
     <div className="page-content">
       <div className="page-header">
         <h2 className="page-title">📊 数据概览</h2>
-        <Button type="primary" onClick={loadData}>刷新数据</Button>
+        <Space>
+          <Tooltip title={autoRefreshing ? '正在自动检查疫苗到期提醒...' : '每5分钟自动检查疫苗到期提醒'}>
+            <Badge dot={autoRefreshing} status="processing">
+              <SyncOutlined spin={autoRefreshing} style={{ color: autoRefreshing ? '#1890ff' : '#999' }} />
+            </Badge>
+          </Tooltip>
+          <Button type="primary" onClick={loadData}>刷新数据</Button>
+        </Space>
       </div>
+
+      {(vaccineStats.inShopExpired > 0 || vaccineStats.inShopExpiring > 0) && (
+        <Alert
+          message={
+            <Space>
+              <ExclamationCircleTwoTone twoToneColor="#f5222d" />
+              <span>
+                <strong>在店宠物疫苗预警：</strong>
+                {vaccineStats.inShopExpired > 0 && (
+                  <span style={{ color: '#f5222d', marginLeft: 8 }}>
+                    已过期 {vaccineStats.inShopExpired} 只
+                  </span>
+                )}
+                {vaccineStats.inShopExpiring > 0 && (
+                  <span style={{ color: '#faad14', marginLeft: 8 }}>
+                    临期 {vaccineStats.inShopExpiring} 只
+                  </span>
+                )}
+              </span>
+            </Space>
+          }
+          description="请及时检查并通知主人补种，避免影响寄养安全。"
+          type="error"
+          showIcon={false}
+          action={
+            <Button size="small" type="primary" danger onClick={openAllVaccineAlerts}>
+              查看详情
+            </Button>
+          }
+          style={{ marginBottom: 16 }}
+          closable
+        />
+      )}
+
+      {vaccineAlertCount > 0 && (
+        <Alert
+          message={
+            <Space>
+              <WarningTwoTone twoToneColor="#faad14" />
+              <span>
+                疫苗到期提醒：共 <strong>{vaccineAlertCount}</strong> 只宠物
+                {vaccineStats.expired > 0 && (
+                  <span style={{ color: '#f5222d', marginLeft: 6 }}>
+                    （已过期 {vaccineStats.expired} 只）
+                  </span>
+                )}
+                {vaccineStats.expiring > 0 && (
+                  <span style={{ color: '#faad14', marginLeft: 6 }}>
+                    （临期 {vaccineStats.expiring} 只）
+                  </span>
+                )}
+              </span>
+            </Space>
+          }
+          description="寄养宠物疫苗临期/过期时入店会自动弹窗提醒；到期前3天系统将再次提醒，可短信通知主人补种。系统每5分钟自动检查一次。"
+          type="warning"
+          showIcon={false}
+          action={
+            <Button size="small" type="primary" onClick={openAllVaccineAlerts}>
+              查看并通知主人
+            </Button>
+          }
+          style={{ marginBottom: 24 }}
+        />
+      )}
 
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={12} sm={6}>
@@ -93,7 +272,22 @@ function Dashboard() {
         </Col>
         <Col xs={12} sm={6}>
           <Card className="stat-card">
-            <Statistic title="在店寄养" value={stats.boarding} suffix="只" valueStyle={{ color: '#52c41a' }} />
+            <Statistic
+              title="在店寄养"
+              value={stats.boarding}
+              suffix="只"
+              valueStyle={{ color: '#52c41a' }}
+            />
+            {(vaccineStats.inShopExpired > 0 || vaccineStats.inShopExpiring > 0) && (
+              <Space size={4} style={{ marginTop: 4 }}>
+                {vaccineStats.inShopExpired > 0 && (
+                  <Tag color="red" style={{ margin: 0 }}>⚠ {vaccineStats.inShopExpired}过期</Tag>
+                )}
+                {vaccineStats.inShopExpiring > 0 && (
+                  <Tag color="orange" style={{ margin: 0 }}>⏰ {vaccineStats.inShopExpiring}临期</Tag>
+                )}
+              </Space>
+            )}
           </Card>
         </Col>
         <Col xs={12} sm={6}>
@@ -162,6 +356,21 @@ function Dashboard() {
           </Col>
         </Row>
       )}
+
+      <VaccineAlertModal
+        open={vaccineModalVisible}
+        onClose={() => setVaccineModalVisible(false)}
+        alerts={vaccineAlerts}
+        reminderType={vaccineMode === 'pre_expire' ? 'pre_expire' : undefined}
+        getReminderType={vaccineMode === 'all' ? (r) => (r.status === 'expired' ? 'expired' : 'pre_expire') : undefined}
+        onSmsSent={refreshVaccineAlerts}
+        title={vaccineMode === 'pre_expire' ? '⏰ 疫苗到期前3天提醒' : '⚠️ 疫苗到期提醒'}
+        description={
+          vaccineMode === 'pre_expire'
+            ? '以下宠物疫苗将于3天内到期，请及时短信通知主人安排补种。'
+            : '以下宠物疫苗临期或已过期，可对单只或批量发送短信通知主人。'
+        }
+      />
     </div>
   );
 }

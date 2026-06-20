@@ -27,6 +27,27 @@ function all(sql, params = []) {
   });
 }
 
+async function addColumnIfNotExists(table, column, definition) {
+  const info = await all(`PRAGMA table_info(${table})`);
+  const exists = info.some(c => c.name === column);
+  if (!exists) {
+    await run(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    console.log(`数据库迁移: 已添加列 ${table}.${column}`);
+  }
+}
+
+async function dropColumnIfExists(table, column) {
+  const info = await all(`PRAGMA table_info(${table})`);
+  const exists = info.some(c => c.name === column);
+  if (!exists) return;
+  try {
+    await run(`ALTER TABLE ${table} DROP COLUMN ${column}`);
+    console.log(`数据库迁移: 已删除冗余列 ${table}.${column}`);
+  } catch (err) {
+    console.warn(`数据库迁移: 跳过删除 ${table}.${column}（当前SQLite版本不支持）`, err.message);
+  }
+}
+
 async function initDatabase() {
   try {
     await run(`
@@ -36,11 +57,22 @@ async function initDatabase() {
         breed TEXT NOT NULL,
         age INTEGER NOT NULL,
         vaccine_records TEXT,
+        vaccine_expiry_date DATE,
+        owner_phone TEXT,
         habits TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    await addColumnIfNotExists('pets', 'vaccine_expiry_date', 'DATE');
+    await addColumnIfNotExists('pets', 'owner_phone', 'TEXT');
+    const petCols = await all('PRAGMA table_info(pets)');
+    if (petCols.some(c => c.name === 'vaccine_expire_date')) {
+      await run('UPDATE pets SET vaccine_expiry_date = vaccine_expire_date WHERE vaccine_expire_date IS NOT NULL AND vaccine_expiry_date IS NULL');
+      console.log('数据库迁移: 已迁移 vaccine_expire_date 数据至 vaccine_expiry_date');
+    }
+    await dropColumnIfExists('pets', 'vaccine_expire_date');
 
     await run(`
       CREATE TABLE IF NOT EXISTS cages (
@@ -106,9 +138,39 @@ async function initDatabase() {
       )
     `);
 
+    await run(`
+      CREATE TABLE IF NOT EXISTS vaccine_reminders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        pet_id INTEGER NOT NULL,
+        reminder_type TEXT NOT NULL CHECK(reminder_type IN ('checkin', 'pre_expire', 'expired')),
+        phone TEXT,
+        message TEXT,
+        sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (pet_id) REFERENCES pets(id)
+      )
+    `);
+
+    const vrInfo = await all('PRAGMA table_info(vaccine_reminders)');
+    if (vrInfo.length > 0 && !vrInfo.some(c => c.name === 'phone')) {
+      await run('DROP TABLE vaccine_reminders');
+      await run(`
+        CREATE TABLE vaccine_reminders (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          pet_id INTEGER NOT NULL,
+          reminder_type TEXT NOT NULL CHECK(reminder_type IN ('checkin', 'pre_expire', 'expired')),
+          phone TEXT,
+          message TEXT,
+          sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (pet_id) REFERENCES pets(id)
+        )
+      `);
+      console.log('数据库迁移: 已重建表 vaccine_reminders（兼容旧版结构）');
+    }
+
     await run('CREATE INDEX IF NOT EXISTS idx_boarding_cage_date ON boarding_bookings(cage_id, check_in_date, check_out_date)');
     await run('CREATE INDEX IF NOT EXISTS idx_grooming_groomer_datetime ON grooming_bookings(groomer_id, appointment_date, appointment_time)');
     await run('CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(created_at)');
+    await run('CREATE INDEX IF NOT EXISTS idx_vaccine_reminders_pet ON vaccine_reminders(pet_id, reminder_type, sent_at)');
 
     const cageCount = await get('SELECT COUNT(*) as count FROM cages');
     if (cageCount.count === 0) {

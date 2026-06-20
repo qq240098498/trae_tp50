@@ -35,16 +35,23 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const { name, breed, age, vaccine_records, habits } = req.body;
+    const { name, breed, age, vaccine_records, vaccine_expiry_date, owner_phone, habits } = req.body;
     
     if (!name || !breed || age === undefined) {
       return res.status(400).json({ error: '名称、品种、年龄为必填项' });
     }
     
     const result = await run(
-      `INSERT INTO pets (name, breed, age, vaccine_records, habits, updated_at) 
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [name, breed, age, vaccine_records || '', habits || '', dayjs().format('YYYY-MM-DD HH:mm:ss')]
+      `INSERT INTO pets (name, breed, age, vaccine_records, vaccine_expiry_date, owner_phone, habits, updated_at) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        name, breed, age,
+        vaccine_records || '',
+        vaccine_expiry_date || null,
+        owner_phone || '',
+        habits || '',
+        dayjs().format('YYYY-MM-DD HH:mm:ss')
+      ]
     );
     
     const pet = await get('SELECT * FROM pets WHERE id = ?', [result.lastID]);
@@ -56,7 +63,7 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
-    const { name, breed, age, vaccine_records, habits } = req.body;
+    const { name, breed, age, vaccine_records, vaccine_expiry_date, owner_phone, habits } = req.body;
     
     const existing = await get('SELECT * FROM pets WHERE id = ?', [req.params.id]);
     if (!existing) {
@@ -64,13 +71,15 @@ router.put('/:id', async (req, res) => {
     }
     
     await run(
-      `UPDATE pets SET name = ?, breed = ?, age = ?, vaccine_records = ?, habits = ?, updated_at = ? 
+      `UPDATE pets SET name = ?, breed = ?, age = ?, vaccine_records = ?, vaccine_expiry_date = ?, owner_phone = ?, habits = ?, updated_at = ? 
        WHERE id = ?`,
       [
         name || existing.name,
         breed || existing.breed,
         age !== undefined ? age : existing.age,
         vaccine_records !== undefined ? vaccine_records : existing.vaccine_records,
+        vaccine_expiry_date !== undefined ? (vaccine_expiry_date || null) : existing.vaccine_expiry_date,
+        owner_phone !== undefined ? owner_phone : existing.owner_phone,
         habits !== undefined ? habits : existing.habits,
         dayjs().format('YYYY-MM-DD HH:mm:ss'),
         req.params.id

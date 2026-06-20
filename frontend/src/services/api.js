@@ -55,4 +55,12 @@ export const transactionApi = {
   daily: (date) => api.get('/transactions/daily', { params: { date } })
 };
 
+export const vaccineApi = {
+  alerts: () => api.get('/vaccine/alerts'),
+  check: (petId) => api.get(`/vaccine/check/${petId}`),
+  preExpire: () => api.get('/vaccine/pre-expire'),
+  sendSms: (pet_id, reminder_type) => api.post('/vaccine/sms', { pet_id, reminder_type }),
+  reminders: (pet_id) => api.get('/vaccine/reminders', { params: { pet_id } })
+};
+
 export default api;
