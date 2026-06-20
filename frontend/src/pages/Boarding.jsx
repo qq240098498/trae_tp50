@@ -45,14 +45,18 @@ function Boarding() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [bookingsData, petsData] = await Promise.all([
+      const results = await Promise.allSettled([
         boardingApi.list(),
         petApi.list()
       ]);
+      const bookingsData = results[0].status === 'fulfilled' ? results[0].value : [];
+      const petsData = results[1].status === 'fulfilled' ? results[1].value : [];
       setBookings(bookingsData);
       setPets(petsData);
       checkPendingCheckinVaccine(bookingsData);
-      checkPreExpireVaccine();
+      try {
+        await checkPreExpireVaccine();
+      } catch (e) {}
     } catch (err) {
       message.error('加载数据失败');
     } finally {
@@ -206,9 +210,11 @@ function Boarding() {
     try {
       await boardingApi.updateStatus(record.id, status);
       message.success('状态更新成功');
-      loadData();
+      await loadData();
       if (status === '已入住' && record.pet_id) {
-        checkVaccineOnCheckin(record.pet_id);
+        try {
+          await checkVaccineOnCheckin(record.pet_id);
+        } catch (e) {}
       }
     } catch (err) {
       message.error(err.error || '状态更新失败');
@@ -412,7 +418,7 @@ function Boarding() {
         onCancel={() => setModalVisible(false)}
         footer={null}
         width={700}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={form} layout="vertical" onFinish={handleSubmit}>
           <Row gutter={16}>

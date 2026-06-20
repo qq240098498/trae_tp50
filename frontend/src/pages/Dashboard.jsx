@@ -37,15 +37,22 @@ function Dashboard() {
   const preExpireShownRef = useRef(false);
 
   useEffect(() => {
+    let mounted = true;
     loadData();
     checkPreExpire();
     const timer = setInterval(() => {
+      if (!mounted) return;
       setAutoRefreshing(true);
-      Promise.all([loadVaccineAlertCount(), checkPreExpire(true)]).finally(() => {
-        setTimeout(() => setAutoRefreshing(false), 500);
-      });
+      Promise.allSettled([loadVaccineAlertCount(), checkPreExpire(true)])
+        .catch(err => console.warn('Auto refresh error:', err))
+        .finally(() => {
+          setTimeout(() => mounted && setAutoRefreshing(false), 500);
+        });
     }, 5 * 60 * 1000);
-    return () => clearInterval(timer);
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+    };
   }, []);
 
   const loadVaccineAlertCount = async () => {
@@ -80,8 +87,11 @@ function Dashboard() {
       }
     } catch (err) {
       console.error('疫苗到期提醒检查失败:', err);
+    } finally {
+      try {
+        await loadVaccineAlertCount();
+      } catch (e) {}
     }
-    loadVaccineAlertCount();
   };
 
   const openAllVaccineAlerts = async () => {
@@ -96,29 +106,42 @@ function Dashboard() {
   };
 
   const refreshVaccineAlerts = async () => {
-    if (vaccineMode === 'pre_expire') {
-      const data = await vaccineApi.preExpire();
-      setVaccineAlerts(data);
-      if (data.length === 0) {
-        setVaccineModalVisible(false);
+    try {
+      if (vaccineMode === 'pre_expire') {
+        const data = await vaccineApi.preExpire();
+        setVaccineAlerts(data);
+        if (data.length === 0) {
+          setVaccineModalVisible(false);
+        }
+      } else {
+        const data = await vaccineApi.alerts();
+        setVaccineAlerts(data);
       }
-    } else {
-      const data = await vaccineApi.alerts();
-      setVaccineAlerts(data);
+    } catch (err) {
+      console.error('刷新疫苗提醒失败:', err);
+    } finally {
+      try {
+        await loadVaccineAlertCount();
+      } catch (e) {}
     }
-    loadVaccineAlertCount();
   };
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const [pets, boarding, grooming, daily, vaccineList] = await Promise.all([
+      const results = await Promise.allSettled([
         petApi.list(),
         boardingApi.list({ status: '已入住' }),
         groomingApi.list({ status: '待服务', start_date: dayjs().format('YYYY-MM-DD') }),
         transactionApi.daily(dayjs().format('YYYY-MM-DD')),
         vaccineApi.alerts().catch(() => [])
       ]);
+      const getData = (i, fallback) => results[i].status === 'fulfilled' ? results[i].value : fallback;
+      const pets = getData(0, []);
+      const boarding = getData(1, []);
+      const grooming = getData(2, []);
+      const daily = getData(3, { summary: { total_amount: 0 }, transactions: [] });
+      const vaccineList = getData(4, []);
       
       setStats({
         pets: pets.length,
@@ -143,10 +166,12 @@ function Dashboard() {
       setVaccineStats({ expired: allExpired, expiring: allExpiring, inShopExpired, inShopExpiring });
       setVaccineAlertCount(vaccineList.length);
       
-      const [allBoarding, allGrooming] = await Promise.all([
+      const results2 = await Promise.allSettled([
         boardingApi.list(),
         groomingApi.list()
       ]);
+      const allBoarding = results2[0].status === 'fulfilled' ? results2[0].value : [];
+      const allGrooming = results2[1].status === 'fulfilled' ? results2[1].value : [];
       
       setRecentBoarding(allBoarding.slice(0, 5));
       setRecentGrooming(allGrooming.slice(0, 5));

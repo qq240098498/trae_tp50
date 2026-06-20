@@ -46,11 +46,14 @@ function Grooming() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [bookingsData, petsData, groomersData] = await Promise.all([
+      const results = await Promise.allSettled([
         groomingApi.list(),
         petApi.list(),
         groomingApi.groomers()
       ]);
+      const bookingsData = results[0].status === 'fulfilled' ? results[0].value : [];
+      const petsData = results[1].status === 'fulfilled' ? results[1].value : [];
+      const groomersData = results[2].status === 'fulfilled' ? results[2].value : [];
       setBookings(bookingsData);
       setPets(petsData);
       setGroomers(groomersData);
@@ -258,7 +261,7 @@ function Grooming() {
         onCancel={() => setModalVisible(false)}
         footer={null}
         width={700}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={form} layout="vertical" onFinish={handleSubmit}>
           <Row gutter={16}>
