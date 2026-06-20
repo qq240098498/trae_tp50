@@ -1,0 +1,63 @@
+# ==========================================
+# 通用 Git 忽略文件（直接用，不用改）
+# ==========================================
+
+# 编辑器 / IDE 配置
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 系统自动生成文件
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# 环境变量 / 密码 / 密钥
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pem
+*.key
+*.secret
+
+# 日志文件
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 依赖包 / 第三方库
+node_modules/
+vendor/
+composer.phar
+
+# 编译 / 打包产物
+dist/
+build/
+out/
+output/
+*.o
+*.obj
+*.class
+
+# 缓存 / 临时文件
+tmp/
+temp/
+*.tmp
+*.cache
+*.pid
+
+# 测试覆盖率
+coverage/
+.nyc_output/
+
+# 项目自定义（可自己加）

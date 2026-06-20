@@ -1,0 +1,58 @@
+import axios from 'axios';
+
+const api = axios.create({
+  baseURL: '/api',
+  timeout: 10000
+});
+
+api.interceptors.response.use(
+  response => response.data,
+  error => {
+    console.error('API Error:', error);
+    return Promise.reject(error.response?.data || error);
+  }
+);
+
+export const petApi = {
+  list: (keyword) => api.get('/pets', { params: { keyword } }),
+  get: (id) => api.get(`/pets/${id}`),
+  create: (data) => api.post('/pets', data),
+  update: (id, data) => api.put(`/pets/${id}`, data),
+  delete: (id) => api.delete(`/pets/${id}`)
+};
+
+export const boardingApi = {
+  list: (params) => api.get('/boarding', { params }),
+  get: (id) => api.get(`/boarding/${id}`),
+  create: (data) => api.post('/boarding', data),
+  update: (id, data) => api.put(`/boarding/${id}`, data),
+  updateStatus: (id, status) => api.patch(`/boarding/${id}/status`, { status }),
+  cancel: (id) => api.delete(`/boarding/${id}`),
+  cages: (status) => api.get('/boarding/cages', { params: { status } }),
+  availableCages: (check_in_date, check_out_date, exclude_booking_id) => 
+    api.get('/boarding/cages/available', { params: { check_in_date, check_out_date, exclude_booking_id } })
+};
+
+export const groomingApi = {
+  list: (params) => api.get('/grooming', { params }),
+  get: (id) => api.get(`/grooming/${id}`),
+  create: (data) => api.post('/grooming', data),
+  update: (id, data) => api.put(`/grooming/${id}`, data),
+  updateStatus: (id, status) => api.patch(`/grooming/${id}/status`, { status }),
+  cancel: (id) => api.delete(`/grooming/${id}`),
+  groomers: (status) => api.get('/grooming/groomers', { params: { status } }),
+  availableGroomers: (appointment_date, exclude_booking_id) => 
+    api.get('/grooming/groomers/available', { params: { appointment_date, exclude_booking_id } }),
+  services: () => api.get('/grooming/services')
+};
+
+export const transactionApi = {
+  list: (params) => api.get('/transactions', { params }),
+  get: (id) => api.get(`/transactions/${id}`),
+  checkoutPreview: (pet_id, boarding_booking_id) => 
+    api.get(`/transactions/checkout/${pet_id}`, { params: { boarding_booking_id } }),
+  checkout: (data) => api.post('/transactions/checkout', data),
+  daily: (date) => api.get('/transactions/daily', { params: { date } })
+};
+
+export default api;
