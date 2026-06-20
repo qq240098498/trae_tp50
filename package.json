@@ -1,0 +1,22 @@
+{
+  "name": "pet-shop-management-system",
+  "version": "1.0.0",
+  "description": "宠物寄养与美容店管理系统 - 前后端一体化启动",
+  "private": true,
+  "scripts": {
+    "install:all": "cd backend && npm install && cd ../frontend && npm install",
+    "start:backend": "cd backend && npm start",
+    "start:frontend": "cd frontend && npm run dev",
+    "dev": "node scripts/start.js",
+    "start": "node scripts/start.js",
+    "stop": "node scripts/stop.js"
+  },
+  "keywords": [
+    "pet-shop",
+    "pet-grooming",
+    "pet-boarding",
+    "management-system"
+  ],
+  "author": "",
+  "license": "MIT"
+}
