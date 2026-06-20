@@ -511,6 +511,100 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+router.post('/:id/pickup-confirm', async (req, res) => {
+  try {
+    const { pickup_photo, pickup_remark, pet_condition_pickup, confirmed_by } = req.body;
+    
+    const existing = await get('SELECT * FROM pickup_bookings WHERE id = ?', [req.params.id]);
+    if (!existing) {
+      return res.status(404).json({ error: '接送预约不存在' });
+    }
+    
+    if (existing.status !== '待接送') {
+      return res.status(400).json({ error: '当前状态不允许接走确认' });
+    }
+    
+    const now = dayjs().format('YYYY-MM-DD HH:mm:ss');
+    
+    await run(`
+      UPDATE pickup_bookings SET 
+      status = '已接走',
+      pickup_at = ?,
+      pickup_photo = ?,
+      pickup_remark = ?,
+      pet_condition_pickup = ?,
+      pickup_confirmed_by = ?,
+      updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `, [
+      now,
+      pickup_photo || '',
+      pickup_remark || '',
+      pet_condition_pickup || '',
+      confirmed_by || '',
+      req.params.id
+    ]);
+    
+    const booking = await get(`
+      SELECT pb.*, p.name as pet_name
+      FROM pickup_bookings pb
+      LEFT JOIN pets p ON pb.pet_id = p.id
+      WHERE pb.id = ?
+    `, [req.params.id]);
+    
+    res.json(booking);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/:id/dropoff-confirm', async (req, res) => {
+  try {
+    const { dropoff_photo, dropoff_remark, pet_condition_dropoff, confirmed_by } = req.body;
+    
+    const existing = await get('SELECT * FROM pickup_bookings WHERE id = ?', [req.params.id]);
+    if (!existing) {
+      return res.status(404).json({ error: '接送预约不存在' });
+    }
+    
+    if (existing.status !== '已接走') {
+      return res.status(400).json({ error: '当前状态不允许送回确认' });
+    }
+    
+    const now = dayjs().format('YYYY-MM-DD HH:mm:ss');
+    
+    await run(`
+      UPDATE pickup_bookings SET 
+      status = '已送回',
+      dropoff_at = ?,
+      dropoff_photo = ?,
+      dropoff_remark = ?,
+      pet_condition_dropoff = ?,
+      dropoff_confirmed_by = ?,
+      updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `, [
+      now,
+      dropoff_photo || '',
+      dropoff_remark || '',
+      pet_condition_dropoff || '',
+      confirmed_by || '',
+      req.params.id
+    ]);
+    
+    const booking = await get(`
+      SELECT pb.*, p.name as pet_name
+      FROM pickup_bookings pb
+      LEFT JOIN pets p ON pb.pet_id = p.id
+      WHERE pb.id = ?
+    `, [req.params.id]);
+    
+    res.json(booking);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 async function calculatePickupFee(distance_km, area_id, area_name) {
   const distance = parseFloat(distance_km);
   let totalFee = 0;

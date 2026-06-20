@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { 
   Table, Button, Input, Space, Modal, Form, Select, DatePicker, 
   message, Popconfirm, Tag, Descriptions, Row, Col, Tabs, Card,
-  InputNumber, Divider, Statistic
+  InputNumber, Divider, Statistic, Upload, Image
 } from 'antd';
 import { 
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, 
-  EyeOutlined, CarOutlined, SettingOutlined, CalculatorOutlined 
+  EyeOutlined, CarOutlined, SettingOutlined, CalculatorOutlined,
+  UploadOutlined
 } from '@ant-design/icons';
 import { pickupApi, petApi } from '../services/api.js';
 import dayjs from 'dayjs';
@@ -45,6 +46,13 @@ function Pickup() {
   const [tierModalVisible, setTierModalVisible] = useState(false);
   const [editingArea, setEditingArea] = useState(null);
   const [editingTier, setEditingTier] = useState(null);
+  const [pickupConfirmVisible, setPickupConfirmVisible] = useState(false);
+  const [dropoffConfirmVisible, setDropoffConfirmVisible] = useState(false);
+  const [confirmingBooking, setConfirmingBooking] = useState(null);
+  const [pickupPhotos, setPickupPhotos] = useState([]);
+  const [dropoffPhotos, setDropoffPhotos] = useState([]);
+  const [pickupForm] = Form.useForm();
+  const [dropoffForm] = Form.useForm();
 
   useEffect(() => {
     loadData();
@@ -292,6 +300,117 @@ function Pickup() {
     }
   };
 
+  const fileToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = error => reject(error);
+    });
+  };
+
+  const handlePickupBeforeUpload = async (file) => {
+    try {
+      const base64 = await fileToBase64(file);
+      setPickupPhotos(prev => [...prev, {
+        uid: Date.now() + Math.random(),
+        name: file.name,
+        status: 'done',
+        url: base64
+      }]);
+    } catch (err) {
+      message.error('图片处理失败');
+    }
+    return false;
+  };
+
+  const handleDropoffBeforeUpload = async (file) => {
+    try {
+      const base64 = await fileToBase64(file);
+      setDropoffPhotos(prev => [...prev, {
+        uid: Date.now() + Math.random(),
+        name: file.name,
+        status: 'done',
+        url: base64
+      }]);
+    } catch (err) {
+      message.error('图片处理失败');
+    }
+    return false;
+  };
+
+  const handlePickupRemove = (file) => {
+    setPickupPhotos(prev => prev.filter(p => p.uid !== file.uid));
+  };
+
+  const handleDropoffRemove = (file) => {
+    setDropoffPhotos(prev => prev.filter(p => p.uid !== file.uid));
+  };
+
+  const handlePickupConfirm = (booking) => {
+    setConfirmingBooking(booking);
+    setPickupPhotos([]);
+    pickupForm.resetFields();
+    pickupForm.setFieldsValue({
+      pet_status: '健康',
+      remarks: '',
+      confirmed_by: ''
+    });
+    setPickupConfirmVisible(true);
+  };
+
+  const handleDropoffConfirm = (booking) => {
+    setConfirmingBooking(booking);
+    setDropoffPhotos([]);
+    dropoffForm.resetFields();
+    dropoffForm.setFieldsValue({
+      pet_status: '健康',
+      remarks: '',
+      confirmed_by: ''
+    });
+    setDropoffConfirmVisible(true);
+  };
+
+  const handlePickupSubmit = async (values) => {
+    try {
+      const data = {
+        pet_condition_pickup: values.pet_status,
+        pickup_remark: values.remarks || '',
+        confirmed_by: values.confirmed_by || '',
+        pickup_photo: pickupPhotos.map(p => p.url).join(',')
+      };
+      await pickupApi.pickupConfirm(confirmingBooking.id, data);
+      message.success('接走确认成功');
+      setPickupConfirmVisible(false);
+      loadData();
+      if (activeTab === 'routes') {
+        loadRoutes();
+      }
+    } catch (err) {
+      message.error(err.error || '确认失败');
+    }
+  };
+
+  const handleDropoffSubmit = async (values) => {
+    try {
+      const data = {
+        pet_condition_dropoff: values.pet_status,
+        dropoff_remark: values.remarks || '',
+        confirmed_by: values.confirmed_by || '',
+        dropoff_photo: dropoffPhotos.map(p => p.url).join(',')
+      };
+      await pickupApi.dropoffConfirm(confirmingBooking.id, data);
+      message.success('送回确认成功');
+      setDropoffConfirmVisible(false);
+      loadData();
+      if (activeTab === 'routes') {
+        loadRoutes();
+      }
+    } catch (err) {
+      message.error(err.error || '确认失败');
+    }
+  };
+
   const bookingColumns = [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
     { title: '宠物名称', dataIndex: 'pet_name', key: 'pet_name', width: 100, render: (v) => v || '-' },
@@ -329,10 +448,10 @@ function Pickup() {
             <>
               <Button size="small" icon={<EditOutlined />} type="primary" onClick={() => handleEdit(record)}>编辑</Button>
               {record.status === '待接送' && (
-                <Button size="small" type="success" onClick={() => handleStatusChange(record, '已接走')}>接走</Button>
+                <Button size="small" type="success" onClick={() => handlePickupConfirm(record)}>接走</Button>
               )}
               {record.status === '已接走' && (
-                <Button size="small" type="success" onClick={() => handleStatusChange(record, '已送回')}>送回</Button>
+                <Button size="small" type="success" onClick={() => handleDropoffConfirm(record)}>送回</Button>
               )}
               {(record.status === '已送回' || record.status === '已接走') && (
                 <Button size="small" type="primary" onClick={() => handleStatusChange(record, '已完成')}>完成</Button>
@@ -759,37 +878,261 @@ function Pickup() {
       </Modal>
 
       <Modal
+        title="接走确认"
+        open={pickupConfirmVisible}
+        onCancel={() => setPickupConfirmVisible(false)}
+        footer={null}
+        width={600}
+        destroyOnHidden
+      >
+        {confirmingBooking && (
+          <Form form={pickupForm} layout="vertical" onFinish={handlePickupSubmit}>
+            <Card size="small" style={{ marginBottom: 16 }}>
+              <Descriptions column={1} size="small">
+                <Descriptions.Item label="宠物名称">
+                  {confirmingBooking.pet_name || '未关联'}
+                </Descriptions.Item>
+                <Descriptions.Item label="主人姓名">
+                  {confirmingBooking.owner_name}
+                </Descriptions.Item>
+                <Descriptions.Item label="联系电话">
+                  {confirmingBooking.owner_phone}
+                </Descriptions.Item>
+                <Descriptions.Item label="接送地址">
+                  {confirmingBooking.pickup_address}
+                </Descriptions.Item>
+              </Descriptions>
+            </Card>
+
+            <Form.Item 
+              name="pet_status" 
+              label="宠物状态" 
+              rules={[{ required: true, message: '请选择宠物状态' }]}
+            >
+              <Select>
+                <Option value="健康">健康</Option>
+                <Option value="轻微不适">轻微不适</Option>
+                <Option value="其他">其他</Option>
+              </Select>
+            </Form.Item>
+
+            <Form.Item label="照片上传">
+              <Upload
+                listType="picture-card"
+                fileList={pickupPhotos}
+                beforeUpload={handlePickupBeforeUpload}
+                onRemove={handlePickupRemove}
+                multiple
+                accept="image/*"
+              >
+                <div>
+                  <PlusOutlined />
+                  <div style={{ marginTop: 8 }}>上传</div>
+                </div>
+              </Upload>
+            </Form.Item>
+
+            <Form.Item name="remarks" label="接走备注">
+              <Input.TextArea rows={3} placeholder="请输入接走备注信息" />
+            </Form.Item>
+
+            <Form.Item 
+              name="confirmed_by" 
+              label="确认人" 
+              rules={[{ required: true, message: '请输入确认人' }]}
+            >
+              <Input placeholder="请输入确认人姓名" />
+            </Form.Item>
+
+            <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
+              <Space>
+                <Button onClick={() => setPickupConfirmVisible(false)}>取消</Button>
+                <Button type="primary" htmlType="submit">确认接走</Button>
+              </Space>
+            </Form.Item>
+          </Form>
+        )}
+      </Modal>
+
+      <Modal
+        title="送回确认"
+        open={dropoffConfirmVisible}
+        onCancel={() => setDropoffConfirmVisible(false)}
+        footer={null}
+        width={600}
+        destroyOnHidden
+      >
+        {confirmingBooking && (
+          <Form form={dropoffForm} layout="vertical" onFinish={handleDropoffSubmit}>
+            <Card size="small" style={{ marginBottom: 16 }}>
+              <Descriptions column={1} size="small">
+                <Descriptions.Item label="宠物名称">
+                  {confirmingBooking.pet_name || '未关联'}
+                </Descriptions.Item>
+                <Descriptions.Item label="主人姓名">
+                  {confirmingBooking.owner_name}
+                </Descriptions.Item>
+                <Descriptions.Item label="联系电话">
+                  {confirmingBooking.owner_phone}
+                </Descriptions.Item>
+                <Descriptions.Item label="送回地址">
+                  {confirmingBooking.dropoff_address || confirmingBooking.pickup_address}
+                </Descriptions.Item>
+              </Descriptions>
+            </Card>
+
+            <Form.Item 
+              name="pet_status" 
+              label="宠物状态" 
+              rules={[{ required: true, message: '请选择宠物状态' }]}
+            >
+              <Select>
+                <Option value="健康">健康</Option>
+                <Option value="轻微不适">轻微不适</Option>
+                <Option value="其他">其他</Option>
+              </Select>
+            </Form.Item>
+
+            <Form.Item label="照片上传">
+              <Upload
+                listType="picture-card"
+                fileList={dropoffPhotos}
+                beforeUpload={handleDropoffBeforeUpload}
+                onRemove={handleDropoffRemove}
+                multiple
+                accept="image/*"
+              >
+                <div>
+                  <PlusOutlined />
+                  <div style={{ marginTop: 8 }}>上传</div>
+                </div>
+              </Upload>
+            </Form.Item>
+
+            <Form.Item name="remarks" label="送回备注">
+              <Input.TextArea rows={3} placeholder="请输入送回备注信息" />
+            </Form.Item>
+
+            <Form.Item 
+              name="confirmed_by" 
+              label="确认人" 
+              rules={[{ required: true, message: '请输入确认人' }]}
+            >
+              <Input placeholder="请输入确认人姓名" />
+            </Form.Item>
+
+            <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
+              <Space>
+                <Button onClick={() => setDropoffConfirmVisible(false)}>取消</Button>
+                <Button type="primary" htmlType="submit">确认送回</Button>
+              </Space>
+            </Form.Item>
+          </Form>
+        )}
+      </Modal>
+
+      <Modal
         title="接送预约详情"
         open={detailVisible}
         onCancel={() => setDetailVisible(false)}
         footer={[
           <Button key="close" onClick={() => setDetailVisible(false)}>关闭</Button>
         ]}
-        width={600}
+        width={650}
       >
         {viewingBooking && (
-          <Descriptions column={1} bordered size="small">
-            <Descriptions.Item label="服务类型">{viewingBooking.service_type}</Descriptions.Item>
-            <Descriptions.Item label="状态">
-              <Tag color={statusColors[viewingBooking.status]}>{viewingBooking.status}</Tag>
-            </Descriptions.Item>
-            <Descriptions.Item label="宠物名称">{viewingBooking.pet_name || '未关联'}</Descriptions.Item>
-            <Descriptions.Item label="主人姓名">{viewingBooking.owner_name}</Descriptions.Item>
-            <Descriptions.Item label="联系电话">{viewingBooking.owner_phone}</Descriptions.Item>
-            <Descriptions.Item label="接送区域">{viewingBooking.pickup_area}</Descriptions.Item>
-            <Descriptions.Item label="接送地址">{viewingBooking.pickup_address}</Descriptions.Item>
-            <Descriptions.Item label="送回地址">{viewingBooking.dropoff_address || '同接送地址'}</Descriptions.Item>
-            <Descriptions.Item label="接送日期">{viewingBooking.pickup_date}</Descriptions.Item>
-            <Descriptions.Item label="接送时间">{viewingBooking.pickup_time}</Descriptions.Item>
-            <Descriptions.Item label="距离">{viewingBooking.distance_km ? `${viewingBooking.distance_km} 公里` : '未设置'}</Descriptions.Item>
-            <Descriptions.Item label="接送费用">
-              <strong style={{ color: '#f5222d' }}>¥{viewingBooking.pickup_fee}</strong>
-            </Descriptions.Item>
-            <Descriptions.Item label="司机姓名">{viewingBooking.driver_name || '未安排'}</Descriptions.Item>
-            <Descriptions.Item label="司机电话">{viewingBooking.driver_phone || '-'}</Descriptions.Item>
-            <Descriptions.Item label="备注">{viewingBooking.remarks || '无'}</Descriptions.Item>
-            <Descriptions.Item label="创建时间">{viewingBooking.created_at}</Descriptions.Item>
-          </Descriptions>
+          <div>
+            <Descriptions column={1} bordered size="small" style={{ marginBottom: 16 }}>
+              <Descriptions.Item label="服务类型">{viewingBooking.service_type}</Descriptions.Item>
+              <Descriptions.Item label="状态">
+                <Tag color={statusColors[viewingBooking.status]}>{viewingBooking.status}</Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="宠物名称">{viewingBooking.pet_name || '未关联'}</Descriptions.Item>
+              <Descriptions.Item label="主人姓名">{viewingBooking.owner_name}</Descriptions.Item>
+              <Descriptions.Item label="联系电话">{viewingBooking.owner_phone}</Descriptions.Item>
+              <Descriptions.Item label="接送区域">{viewingBooking.pickup_area}</Descriptions.Item>
+              <Descriptions.Item label="接送地址">{viewingBooking.pickup_address}</Descriptions.Item>
+              <Descriptions.Item label="送回地址">{viewingBooking.dropoff_address || '同接送地址'}</Descriptions.Item>
+              <Descriptions.Item label="接送日期">{viewingBooking.pickup_date}</Descriptions.Item>
+              <Descriptions.Item label="接送时间">{viewingBooking.pickup_time}</Descriptions.Item>
+              <Descriptions.Item label="距离">{viewingBooking.distance_km ? `${viewingBooking.distance_km} 公里` : '未设置'}</Descriptions.Item>
+              <Descriptions.Item label="接送费用">
+                <strong style={{ color: '#f5222d' }}>¥{viewingBooking.pickup_fee}</strong>
+              </Descriptions.Item>
+              <Descriptions.Item label="司机姓名">{viewingBooking.driver_name || '未安排'}</Descriptions.Item>
+              <Descriptions.Item label="司机电话">{viewingBooking.driver_phone || '-'}</Descriptions.Item>
+              <Descriptions.Item label="备注">{viewingBooking.remarks || '无'}</Descriptions.Item>
+              <Descriptions.Item label="创建时间">{viewingBooking.created_at}</Descriptions.Item>
+            </Descriptions>
+
+            {viewingBooking.pickup_at && (
+              <Card size="small" title="接走信息" style={{ marginBottom: 16 }}>
+                <Descriptions column={1} size="small">
+                  <Descriptions.Item label="接走时间">
+                    {viewingBooking.pickup_at || '-'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="宠物状态">
+                    {viewingBooking.pet_condition_pickup || '-'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="接走备注">
+                    {viewingBooking.pickup_remark || '无'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="确认人">
+                    {viewingBooking.pickup_confirmed_by || '-'}
+                  </Descriptions.Item>
+                  {viewingBooking.pickup_photo && (
+                    <Descriptions.Item label="接走照片">
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                        {viewingBooking.pickup_photo.split(',').filter(Boolean).map((photo, index) => (
+                          <Image
+                            key={index}
+                            width={60}
+                            height={60}
+                            src={photo}
+                            style={{ objectFit: 'cover', borderRadius: 4 }}
+                          />
+                        ))}
+                      </div>
+                    </Descriptions.Item>
+                  )}
+                </Descriptions>
+              </Card>
+            )}
+
+            {viewingBooking.dropoff_at && (
+              <Card size="small" title="送回信息">
+                <Descriptions column={1} size="small">
+                  <Descriptions.Item label="送回时间">
+                    {viewingBooking.dropoff_at || '-'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="宠物状态">
+                    {viewingBooking.pet_condition_dropoff || '-'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="送回备注">
+                    {viewingBooking.dropoff_remark || '无'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="确认人">
+                    {viewingBooking.dropoff_confirmed_by || '-'}
+                  </Descriptions.Item>
+                  {viewingBooking.dropoff_photo && (
+                    <Descriptions.Item label="送回照片">
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                        {viewingBooking.dropoff_photo.split(',').filter(Boolean).map((photo, index) => (
+                          <Image
+                            key={index}
+                            width={60}
+                            height={60}
+                            src={photo}
+                            style={{ objectFit: 'cover', borderRadius: 4 }}
+                          />
+                        ))}
+                      </div>
+                    </Descriptions.Item>
+                  )}
+                </Descriptions>
+              </Card>
+            )}
+          </div>
         )}
       </Modal>
 

@@ -220,6 +220,17 @@ async function initDatabase() {
     await run('CREATE INDEX IF NOT EXISTS idx_vaccine_reminders_pet ON vaccine_reminders(pet_id, reminder_type, sent_at)');
     await run('CREATE INDEX IF NOT EXISTS idx_pickup_date_area ON pickup_bookings(pickup_date, pickup_area)');
     await run('CREATE INDEX IF NOT EXISTS idx_pickup_status ON pickup_bookings(status)');
+    
+    await addColumnIfNotExists('pickup_bookings', 'pickup_at', 'DATETIME');
+    await addColumnIfNotExists('pickup_bookings', 'pickup_photo', 'TEXT');
+    await addColumnIfNotExists('pickup_bookings', 'pickup_remark', 'TEXT');
+    await addColumnIfNotExists('pickup_bookings', 'pickup_confirmed_by', 'TEXT');
+    await addColumnIfNotExists('pickup_bookings', 'pet_condition_pickup', 'TEXT');
+    await addColumnIfNotExists('pickup_bookings', 'dropoff_at', 'DATETIME');
+    await addColumnIfNotExists('pickup_bookings', 'dropoff_photo', 'TEXT');
+    await addColumnIfNotExists('pickup_bookings', 'dropoff_remark', 'TEXT');
+    await addColumnIfNotExists('pickup_bookings', 'dropoff_confirmed_by', 'TEXT');
+    await addColumnIfNotExists('pickup_bookings', 'pet_condition_dropoff', 'TEXT');
 
     const cageCount = await get('SELECT COUNT(*) as count FROM cages');
     if (cageCount.count === 0) {
